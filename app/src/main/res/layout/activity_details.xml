@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/details_fragment"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".DetailsActivity"
+    tools:deviceIds="tv"
+>
+  <TextClock android:id="@+id/textClock"
+    android:format24Hour="\n HH:mm:ss    "
+    android:format12Hour="\n hh:mm:ss a    "
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+	android:layout_gravity="top|right"
+  />
+</FrameLayout>

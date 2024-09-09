@@ -1,0 +1,4 @@
+#!/bin/sh
+cd /home/user/StudioProjects/tv.apk/www/
+(python3 -m http.server > /dev/null 2>&1 ) &
+echo "==done=="

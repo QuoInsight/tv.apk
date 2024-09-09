@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-feature android:name="android.software.leanback" android:required="false" /><!--add for TV app, false as non-exclusive-->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" /><!--add for TV app-->
+
+    <application android:label="☸QuoInsight☸TV" android:icon="@drawable/icon"
+        android:banner="@drawable/banner" _comment1="add banner 320x180 for TV app"
+        android:allowBackup="true" android:supportsRtl="true" android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.QuoInsightTV"
+    >
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape">
+           <intent-filter>
+               <action android:name="android.intent.action.MAIN" />
+               <category android:name="android.intent.category.LAUNCHER" /><!--for mobile app-->
+               <category android:name="android.intent.category.LEANBACK_LAUNCHER" /><!--add for TV app-->
+           </intent-filter>
+        </activity>
+        <activity
+            android:name=".DetailsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".PlaybackActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ExoPlayerActivity"
+            android:exported="false" />
+        <activity
+            android:name=".BrowseErrorActivity"
+            android:exported="false" />
+    </application>
+
+</manifest>
