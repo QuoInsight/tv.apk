@@ -4,7 +4,57 @@ class ExoPlayerActivity : android.app.Activity() {
 
 	public lateinit var exoPlayer : androidx.media3.exoplayer.ExoPlayer
 	public var videoUrl : String? = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-	public var startedPlaying : Boolean = false
+
+	public var doneManualWA : Int = 0
+	public var epochSec1 : Long = 0 // java.time.Instant.now().getEpochSecond()
+	public lateinit var timeoutHandler : android.os.Handler
+
+	//////////////////////////////////////////////////////////////////////
+
+	fun playNext() {
+		// https://github.com/donparapidos/ExoPlayer/blob/master/library/src/main/java/com/google/android/exoplayer2/ui/PlaybackControlView.java
+		var currentTimeline = exoPlayer.getCurrentTimeline()
+		if (currentTimeline.isEmpty()) {
+			return
+		}
+		var currentWindowIndex = exoPlayer.getCurrentWindowIndex()
+		if (currentWindowIndex < currentTimeline.getWindowCount() - 1) {
+			currentWindowIndex = currentWindowIndex + 1
+		} else {
+			var currentWindow = androidx.media3.common.Timeline.Window();
+			if (! currentTimeline.getWindow(currentWindowIndex, currentWindow, 0).isDynamic) {
+				return
+			}
+		}
+		exoPlayer.seekTo(currentWindowIndex, Long.MIN_VALUE + 1) // C.TIME_UNSET == Long.MIN_VALUE + 1 // https://github.com/donparapidos/ExoPlayer/blob/master/library/src/main/java/com/google/android/exoplayer2/C.java
+	}
+
+	//////////////////////////////////////////////////////////////////////
+
+	public fun playNextOnTimeout(timeout: Long) {
+		// MainActivity.stopOnTimeout
+		// below seems to be crashing, need to debug further ...
+		try {
+			timeoutHandler.removeCallbacksAndMessages(null)
+		} catch(e: Exception) {	}
+		try {
+			timeoutHandler = android.os.Handler()
+			timeoutHandler.postDelayed(object : Runnable { override fun run(){ // !! must use this to avoid issue for UI thread !!
+				try {
+					playNext()
+					//commonGui.writeMessage(this@ExoPlayerActivity, "playNextOnTimeout()", "done")					
+				} catch(e: Exception) { 
+					//commonGui.writeMessage(this@ExoPlayerActivity, "playNextOnTimeout()", e.message.toString())
+				}
+			}}, timeout)
+			//commonGui.writeMessage(this@ExoPlayerActivity, "playNextOnTimeout()", "Stopping in next " + String.format("%.1f", (timeout/60000.0)) + " minute(s) ...")
+		} catch(e: Exception) {
+			//commonGui.writeMessage(getApplicationContext()!!, "playNextOnTimeout()", e.message.toString())
+		}
+		return
+	}
+
+	//////////////////////////////////////////////////////////////////////
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,7 +69,7 @@ class ExoPlayerActivity : android.app.Activity() {
 		}
         setContentView(R.layout.exoplayer_activity)
 
-		startedPlaying = false
+		doneManualWA = 0
 		var i: Int = 0
 		try {
 			// https://stackoverflow.com/questions/68390773/create-a-simple-exoplayer-to-stream-video-from-url
@@ -50,7 +100,27 @@ class ExoPlayerActivity : android.app.Activity() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
 						super.onIsPlayingChanged(isPlaying)
 						commonGui.writeMessage(getApplicationContext()!!, "onIsPlayingChanged()", isPlaying.toString())
-						//if (isPlaying) { ... }
+						// workaround to force playNext() to avoid m3u8 stop playing video after few seconds
+						// https://stackoverflow.com/questions/62199914/video-stream-freezes-after-few-seconds-but-sound-works-fine
+						// https://github.com/jellyfin/jellyfin-androidtv/issues/2248					
+						if (
+							doneManualWA==0 && isPlaying
+							// && exoPlayer.isCommandAvailable(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT
+						) {
+							// not working here
+							//exoPlayer.seekToNextMediaItem() // .next() deprecated.
+							//exoPlayer.play()
+
+							// not working here although seems to be OK from the control buttons
+							// exoPlayer.pause() // Equivalent to setPlayWhenReady(false)
+							// exoPlayer.play() // Equivalent to setPlayWhenReady(true)
+
+							// !! tested working OK, although this is somewhat a very ugly workaround,  !!
+							playNextOnTimeout((7.5*1000).toLong())
+							commonGui.writeMessage(getApplicationContext()!!, "done w/a", "1")
+							doneManualWA = 1
+							epochSec1 = java.time.Instant.now().getEpochSecond()
+						}
                     }
 					override fun onPositionDiscontinuity(
 						oldPosition: androidx.media3.common.Player.PositionInfo,
@@ -60,6 +130,11 @@ class ExoPlayerActivity : android.app.Activity() {
 						super.onPositionDiscontinuity(oldPosition, newPosition, reason)
 						commonGui.writeMessage(getApplicationContext()!!, "onPositionDiscontinuity()", reason.toString())
 						// if (reason == SimpleExoPlayer.DISCONTINUITY_REASON_PERIOD_TRANSITION) { ... }
+						// -- DISCONTINUITY_REASON_SEEK is not triggered before the initial video stopped, hence this does not help
+						// if (
+						//		doneManualWA==0 && reason==androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK
+						//		&& exoPlayer.isCommandAvailable(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT)
+						//	) {
 					}
 					override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
 						super.onTracksChanged(tracks)
@@ -69,16 +144,24 @@ class ExoPlayerActivity : android.app.Activity() {
 						// onPlayerStateChanged() deprecated
 						super.onPlaybackStateChanged(playbackState)
 						commonGui.writeMessage(getApplicationContext()!!, "onPlaybackStateChanged()", playbackState.toString())
-						if ( playbackState == androidx.media3.common.Player.STATE_READY ) {
-							if ( ! startedPlaying ) {
-								// workaround to force playNext() to avoid m3u8 stop playing video after few seconds
-								// https://stackoverflow.com/questions/62199914/video-stream-freezes-after-few-seconds-but-sound-works-fine
-								// https://github.com/jellyfin/jellyfin-androidtv/issues/2248
-								exoPlayer.next()
-								commonGui.writeMessage(getApplicationContext()!!, "..", "exoPlayer.next()")
+						/*
+						if (
+							//playbackState==androidx.media3.common.Player.STATE_BUFFERING ||
+							playbackState==androidx.media3.common.Player.STATE_READY 
+						) {
+							// workaround to force playNext() to avoid m3u8 stop playing video after few seconds
+							// https://stackoverflow.com/questions/62199914/video-stream-freezes-after-few-seconds-but-sound-works-fine
+							// https://github.com/jellyfin/jellyfin-androidtv/issues/2248
+							// !! this is somewhat an ugly workaround, tested working OK !!
+							if ( doneManualWA==0 && exoPlayer.isCommandAvailable(androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT) ) {
+								exoPlayer.play()
+								playNextOnTimeout((7.5*1000).toLong())
+								commonGui.writeMessage(getApplicationContext()!!, "done w/a", "4")
+								doneManualWA = 1
+								epochSec1 = java.time.Instant.now().getEpochSecond()
 							}
-							startedPlaying = true
 						}
+						*/
 					}
 					/*
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -99,13 +182,18 @@ class ExoPlayerActivity : android.app.Activity() {
 			  exoPlayer.prepare()
 			i = 9
 			  exoPlayer.setPlayWhenReady(true) // required when you are playing a video from URL
+			  //if above is commented out, we may manually trigger exoPlayer.play() onPlaybackStateChanged() when androidx.media3.common.Player.STATE_READY 
 		} catch(e: Exception) {
 			commonGui.writeMessage(getApplicationContext()!!, "ExoPlayerActivity.onCreate()#"+i, e.message.toString())
 		}
     }
 
     override fun onPause() {
-		exoPlayer.stop()
+		// exoPlayer.pause()   // 
+		// https://developer.android.com/reference/androidx/media3/common/Player#stop()
+		exoPlayer.stop()    // the player will release the loaded media and resources required for playback. release must still be called on the player if it's no longer required.
+		// stop() does not clear the playlist, reset the playback position or the playback error.
+		exoPlayer.release() // This method must be called when the player is no longer required. The player must not be used after calling this method.
     }
 
 }
